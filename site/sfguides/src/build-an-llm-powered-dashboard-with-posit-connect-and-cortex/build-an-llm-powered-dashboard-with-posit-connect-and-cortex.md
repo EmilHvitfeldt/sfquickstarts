@@ -17,8 +17,9 @@ The benefit of this cannot be overstated. Letting the AI agent produce a SQL que
 
 We'll develop in Posit Workbench inside the Posit Team Native App, use Snowflake Cortex AI as the model backend, and publish to Posit Connect. Because the deployed content carries a Snowflake OAuth integration, each viewer's questions execute under their own Snowflake identity, so the dashboard respects the grants you've already configured. Data, compute, and inference all stay inside your Snowflake account.
 
+At a high level, the pieces fit together like this. Everything sits inside the Snowflake account boundary: you develop in Workbench, the deployed dashboard runs on Connect, and both reach the same databases and the same Cortex models.
+
 ![An architecture diagram bounded by a Snowflake account. Inside it, the Posit Team Snowflake Native App contains Posit Workbench with its IDEs including Positron Pro, Posit Connect hosting Shiny and other content types, and Posit Package Manager. Arrows connect Workbench and Connect down to Snowflake Databases and Snowflake Cortex, and out from Connect to third party applications, email reports, web apps, and decision makers](assets/overview_architecture.png)
-TODO: Thinking this is a good starting point, where is the source for this?
 
 ### What You Will Learn
 
@@ -30,6 +31,8 @@ TODO: Thinking this is a good starting point, where is the source for this?
 
 ### Prerequisites
 
+Access and entitlements that have to be in place before you start, most of which an administrator grants:
+
 - A [Snowflake account](https://signup.snowflake.com/) with Cortex AI enabled
 - The [Posit Team Snowflake Native App](https://app.snowflake.com/marketplace/listing/GZTSZMCB9S/posit-pbc-posit-team) installed and configured by an administrator with the `accountadmin` role, and access granted to you
 - A Snowflake OAuth integration configured for Posit Connect, which your administrator sets up alongside the app
@@ -37,6 +40,8 @@ TODO: Thinking this is a good starting point, where is the source for this?
 - Familiarity with Python and SQL
 
 ### What You Will Need
+
+The working environment you'll set up yourself in the first two sections of this guide:
 
 - A Positron Pro session in Posit Workbench, running Python 3.12
 - The Shiny and Posit Publisher extensions, both bootstrapped in Positron
@@ -298,6 +303,11 @@ import snowflake.connector
 from chatlas import ChatSnowflake
 from posit.connect.external.snowflake import PositAuthenticator
 
+WAREHOUSE = "DEFAULT_WH"
+DATABASE = "SNOWFLAKE_PUBLIC_DATA_FREE"
+SCHEMA = "PUBLIC_DATA_FREE"
+TABLE = "HOME_MORTGAGE_DISCLOSURE_ATTRIBUTES"
+
 MODEL = "claude-haiku-4-5"
 MAX_ROWS = 1000
 SYSTEM_PROMPT = "You are a mortgage lending and housing finance data analysis expert"
@@ -311,12 +321,8 @@ def credentials(session):
                 "No Posit-Connect-User-Session-Token header. Attach the "
                 "Snowflake integration to this content in Connect."
             )
+        # Connect sets SNOWFLAKE_ACCOUNT from the attached integration.
         account = os.getenv("SNOWFLAKE_ACCOUNT")
-        if account is None:
-            raise RuntimeError(
-                "SNOWFLAKE_ACCOUNT is not set. Connect does not inherit it, so "
-                "add it as an environment variable on this content (Vars pane)."
-            )
 
         auth = PositAuthenticator(
             local_authenticator="EXTERNALBROWSER",
@@ -334,7 +340,7 @@ def credentials(session):
     raise RuntimeError("No Snowflake credentials found.")
 ```
 
-The two `RuntimeError`s are the two Connect-side setup steps this guide finishes with. Raising them by name beats the `AttributeError` and `KeyError` you'd otherwise get.
+The `RuntimeError` names the one Connect-side setup step this guide finishes with, attaching the integration. Raising it by name beats the `AttributeError` you'd otherwise get. `SNOWFLAKE_ACCOUNT` needs no such check: Connect sets it on the content from the attached integration, so there is nothing for you to configure.
 
 The `session` argument is not decoration: the viewer's token arrives as an HTTP header on their session, so this function cannot be called at import time, and that constraint shapes the rest of the file.
 
@@ -492,7 +498,7 @@ Because Workbench and Connect run inside the same Native App, publishing avoids 
 
 #### Step 1: Pin the Python version
 
-The `.python-version` file that selected your session interpreter also governs the deployment, so confirm it sits alongside `app.py` and reads `3.12`. It ships in the repository; if you are adapting this pattern in a project of your own, create it with:
+The `.python-version` file that selected your session interpreter also travels into the deployment, so confirm it sits alongside `app.py` and reads `3.12`. Publisher reads it when generating the deployment manifest, which records `>=3.12` as an explicit version constraint rather than just noting whichever interpreter you happened to author with. Connect then picks a matching Python installation. It ships in the repository; if you are adapting this pattern in a project of your own, create it with:
 
 ```bash
 echo "3.12" > .python-version
@@ -510,7 +516,7 @@ echo "3.12" > .python-version
 ![The Create a New Deployment credential picker, listing an existing credential named "connect" pointing at https://connect and highlighted, above a "Create a New Credential" entry](assets/deploy_connect.png)
 
 4. Enter the API key you just created.
-5. Include both `requirements.txt` and `.python-version` in the file list. `.python-version` is a hidden file, so it's easy to miss, and leaving it out puts you back on Connect's newest interpreter.
+5. Include both `requirements.txt` and `.python-version` in the file list. `.python-version` is a hidden file, so it's easy to miss, and leaving it out drops the explicit constraint from the manifest.
 
 ![The Posit Publisher pane's Project Files list with .python-version, app.py, and requirements.txt all checked, and collapsed sections below for Secrets, Integration Requests, Python Packages, and Credentials](assets/publisher_deployment_config.png)
 
@@ -524,9 +530,7 @@ echo "3.12" > .python-version
 
 ### Finish the Setup in Connect
 
-The app is deployed now, but it won't work yet. Two things have to be set on the content itself, and neither travels in the bundle.
-
-#### Step 1: Attach the Snowflake integration
+The app is deployed now, but it won't work yet. One thing has to be set on the content itself, and it doesn't travel in the bundle.
 
 Open the content in Connect, go to **Content Settings** > **Access**, and add the Snowflake integration there.
 
@@ -535,19 +539,9 @@ Open the content in Connect, go to **Content Settings** > **Access**, and add th
 
 Check that you're attaching the **viewer** integration rather than a service account one. That choice is what makes the rest of this guide true.
 
-#### Step 2: Set the account identifier
+Attaching the integration also sets `SNOWFLAKE_ACCOUNT` on the content, which is where the app's connection gets its account identifier. You don't have to add it yourself.
 
-In the **Vars** pane, add `SNOWFLAKE_ACCOUNT`. Connect doesn't inherit it from Workbench, and the app needs it to build the connection. Your Workbench session already knows the value:
-
-```bash
-echo $SNOWFLAKE_ACCOUNT
-```
-
-If that's empty, read it from the connection file at `$SNOWFLAKE_HOME/connections.toml`, or ask Snowflake with `SELECT CURRENT_ACCOUNT()`.
-
-![The Advanced tab of the Connect content settings, showing an Environment Variables section with SNOWFLAKE_ACCOUNT listed as a saved variable and its value hidden](assets/connect_vars_snowflake_account.png)
-
-Changing a variable restarts the content, so neither of these needs a redeploy. Reload the app and it should come up.
+Adding an integration restarts the content, so this doesn't need a redeploy. Reload the app and it should come up.
 
 > The first time you open content backed by a viewer integration, you may be asked to log in to Snowflake through the **Access** tab. That's the OAuth session being established, and it happens once.
 
@@ -556,15 +550,15 @@ Changing a variable restarts the content, so neither of these needs a redeploy. 
 
 ### Open the Dashboard
 
-We did it! the app has been deployed correctly. Return to Connect in the Posit Team Native App, click the **Content** tab, and open your dashboard. Ask a few questions to confirm it behaves the way it did locally.
+We did it! The app has been deployed correctly. Return to Connect in the Posit Team Native App, click the **Content** tab, and open your dashboard. Ask a few questions to confirm it behaves the way it did locally.
 
 ![The deployed HMDA Mortgage Data Explorer dashboard, with the chat on the left showing a generated bar chart of application outcomes and the model's summary, and on the right a card holding the generated SQL query and a table of the returned application rows](assets/connect_content_dashboard.png)
 
 To share it, open the **Settings** pane on the content page, copy the URL from the **Content URL** section, and send it to your team.
 
-### Using the viewers credentials
+### Using the Viewer's Credentials
 
-The important thing to itterate there is that the viewers Snowflake Credentials are used when querying the dashbaord. This means that two colleagues can open the same dashboard, both be able to send a query, but receive different results depending on whether they have access to view the data or not. The Model will only see what the data base is allowed to send back.
+Each viewer queries Snowflake with their own credentials. Two people can use the same dashboard and see different results, because Snowflake applies the permissions granted to each viewer. Cortex receives only the data Snowflake authorizes for that viewer.
 
 > The alternative is a service account integration, where all content queries Snowflake as one shared identity. That suits a dashboard meant to show everyone the same governed numbers, but it puts access control back on you. Over sensitive data, the viewer integration is the safer default.
 

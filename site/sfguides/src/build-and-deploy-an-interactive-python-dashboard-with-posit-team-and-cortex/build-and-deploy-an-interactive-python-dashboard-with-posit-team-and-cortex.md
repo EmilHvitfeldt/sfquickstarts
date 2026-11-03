@@ -72,7 +72,7 @@ Ten rows should come back. If they do not, ask your account administrator to gra
 
 ### Open the Native App
 
-In Snowsight, navigate to **Horizon Catalog** > **Catalog** > **Apps** > Posit Team, then click **Launch app**.
+In Snowsight, click **Apps** in the left sidebar, select the **Posit Team Native App**, then click **Launch app**.
 
 ![The Snowsight Apps listing with Posit Team selected and a Launch app button in the upper right.](assets/snowflake_launch_app.png)
 
@@ -96,7 +96,7 @@ Workbench offers several IDEs, including Positron Pro, VS Code, RStudio Pro Jupy
 
 ![The new session dialog in Workbench with Positron Pro selected as the IDE.](assets/workbench_create_new_session.png)
 
-3. Under **Session Credentials**, click the Snowflake button and complete the sign-in prompts. Your session then inherits your Snowflake role, so your queries use your own identity and grants. See [Workbench-managed Snowflake credentials](https://docs.posit.co/ide/server-pro/user/posit-workbench/managed-credentials/snowflake.html) for how this works.
+3. Check the Snowflake credential under **Session Credentials**. It is listed by account and role, and it is selected when it shows a check mark. If a lock is displayed instead, click it and complete the sign-in prompts. To use a different role, open the drop-down arrow on the right of the credential and choose one that is signed in. Pick a role that can read `SNOWFLAKE_PUBLIC_DATA_FREE` and use the `DEFAULT_WH` warehouse. Your session then inherits that role, so your queries use your own identity and grants. See [Workbench-managed credentials](https://docs.posit.co/ide/server-pro/user/posit-workbench/managed-credentials/managed-credentials.html#starting-a-session-with-workbench-managed-credentials) and [Workbench-managed Snowflake credentials](https://docs.posit.co/ide/server-pro/user/posit-workbench/managed-credentials/snowflake.html) for how this works.
 
 ![The Session Credentials section of the new session dialog, showing a signed-in Snowflake credential.](assets/workbench_snowflake_login_success.png)
 
@@ -113,6 +113,10 @@ This guide uses three extensions, all shipped with Positron as [bootstrapped ext
 Open the Extensions view from the activity bar and search for each by name. An installed and enabled extension shows a gear icon; otherwise click **Install**. If they are disabled and you cannot enable them, ask your administrator.
 
 ![The Positron Extensions view with the Shiny extension shown as installed.](assets/positron_extensions.png)
+
+You can also confirm that the extensions loaded from the activity bar. Posit Assistant and Posit Publisher each add an icon there, highlighted below.
+
+![The Positron activity bar with the Posit Assistant and Posit Publisher icons highlighted.](assets/positron_sidebar_icons.png)
 
 ### Set Up Posit Assistant
 
@@ -147,7 +151,7 @@ The code in this guide lives at <https://github.com/posit-dev/snowflake-posit-py
 
 The analysis uses [Ibis](https://ibis-project.org/) for querying Snowflake, [plotnine](https://plotnine.org/) for plots, [Shiny for Python](https://shiny.posit.co/py/) for the dashboard, and [posit-sdk](https://github.com/posit-dev/posit-sdk-py) for the Connect credential exchange. They are listed in `requirements.txt`.
 
-Create a virtual environment and install them:
+Run the following commands in the Positron terminal (not in a Quarto chunk). Create a virtual environment and install the packages:
 
 ```bash
 python -m venv .venv
@@ -403,10 +407,10 @@ Because Workbench and Connect run inside the Posit Team Native App, publishing d
 
 ![The Posit Publisher deployment configuration panel listing the files included in the bundle.](assets/publisher_deployment_config.png)
 
-The `.python-version` file that selected your session interpreter also travels into the deployment, so confirm it sits alongside `app.py` and reads `3.12.5`. Publisher reads it when generating the deployment manifest, which records `>=3.12.5` as an explicit version constraint rather than just noting whichever interpreter you happened to author with. Connect then picks a matching Python installation. It ships in the repository; if you are adapting this pattern in a project of your own, create it with:
+The `.python-version` file that selected your session interpreter also travels into the deployment, so confirm it sits alongside `app.py` and reads `3.12`. Publisher reads it when generating the deployment manifest, which records `>=3.12` as an explicit version constraint rather than just noting whichever interpreter you happened to author with. Connect then picks a matching Python installation. It ships in the repository; if you are adapting this pattern in a project of your own, create it with:
 
 ```bash
-echo "3.12.5" > .python-version
+echo "3.12" > .python-version
 ```
 
 5. Click **Integration requests** > **+** > the available Snowflake integration.
@@ -421,6 +425,8 @@ See [Publishing from VS Code or Positron](https://docs.posit.co/connect/user/pub
 
 ### Finish the Setup in Connect
 
+When the deployment succeeds, click the link to your content at the end of the deployment log. This opens the app in Connect, where the remaining settings live.
+
 One step does not travel in the bundle. Open **Content Settings**, go to the **Runtime** tab, and in the **Integrations** section click **Add Integrations** and select the Snowflake integration. Clicking **Integration requests** in Publisher records a *request* in the bundle; associating the integration is a separate action in Connect.
 
 ![The Runtime tab of Connect content settings with a Snowflake OAuth integration associated in the Integrations section.](assets/connect_runtime_integration.png)
@@ -428,6 +434,8 @@ One step does not travel in the bundle. Open **Content Settings**, go to the **R
 If the dashboard errors on first load, this is almost always why: without the association Connect reports `No OAuth integrations have been associated with this content item`.
 
 Attaching the integration also sets `SNOWFLAKE_ACCOUNT` on the content, which is where the app's connection gets its account identifier. You do not have to add it yourself.
+
+Finally, decide who can open the dashboard. Connect defaults a new deployment to specific users or groups, so only you (and anyone you add) can see it. Still in **Content Settings**, open the **Access** tab and change the setting to **All users - login required**. Anyone with an account on this Connect server can then open the dashboard, and each viewer's queries still run under their own Snowflake identity.
 
 <!-- ------------------------ -->
 ## Use and Share the Dashboard
@@ -440,7 +448,9 @@ Attaching the integration also sets `SNOWFLAKE_ACCOUNT` on the content, which is
 
 3. To share it, open the **Content Settings** pane in the upper right, and on the **General** tab copy the URL from the **Content URL** section. Send that to your team.
 
-Because you attached the Snowflake integration, the dashboard uses viewer-level authentication: each person who opens it connects to Snowflake as themselves. Two colleagues with different grants on `SNOWFLAKE_PUBLIC_DATA_FREE` will see different results from the same dashboard, with no filtering logic in your code. Your Snowflake RBAC policy is the dashboard's access policy.
+Because you attached the Snowflake integration, the dashboard uses viewer-level authentication: each person who opens it connects to Snowflake as themselves. Two colleagues with different grants on `SNOWFLAKE_PUBLIC_DATA_FREE` will see different results from the same dashboard, with no filtering logic in your code. Your Snowflake RBAC policy decides what data each person sees.
+
+> **Note:** Viewers still need an account on Posit Connect to open the dashboard, because the access setting above requires a login. Snowflake RBAC controls which data they see, not whether they can reach the dashboard. Ask your Connect administrator to add the people you want to share with.
 
 <!-- ------------------------ -->
 ## Conclusion And Resources
